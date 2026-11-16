@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Streamlit 비밀값 (API 키 등은 절대 올리지 않기)
+.streamlit/secrets.toml
+
+# OS / 편집기
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 개인정보가 담긴 원자료는 올리지 않기 (예제 데이터 data/*.xlsx 는 올림)
+private/
+*_원자료.*
