@@ -60,7 +60,7 @@ def test_report_flow():
     at = AppTest.from_file(APP, default_timeout=60).run()
     _by_label(at.radio, "데이터 선택").set_value("예제 데이터 사용").run()
     _by_label(at.selectbox, "분석 메뉴").set_value("7. 단순회귀").run()
-    _by_label(at.button, "📌 이 결과를 보고서에 추가").click().run()
+    _by_label(at.button, "보고서에 담기").click().run()
     assert len(at.session_state["report"]) == 1
     _by_label(at.selectbox, "분석 메뉴").set_value("14. 보고서 내려받기").run()
     assert not at.exception

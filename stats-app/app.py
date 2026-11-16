@@ -6,6 +6,7 @@ by 2026 금오공대 빅데이터 8조
 """
 import html
 import io
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -44,23 +45,99 @@ MENU = [M_DATA, M_DESC, M_NORM, M_CORR, M_T, M_CHI, M_ALPHA, M_REG1, M_REG2,
 
 st.set_page_config(page_title="통계분석 앱", page_icon="📊", layout="centered")
 
-# 스마트폰에서 여백을 줄이고 표가 잘리지 않도록 하는 간단한 CSS
+# ---------------------------------------------------------------------------
+# 디자인 토큰 · 스타일 (Pretendard, 잉크 네이비 + 블루 포인트)
+# ---------------------------------------------------------------------------
+ACCENT = "#2A78D6"
+SERIES = ["#2A78D6", "#EB6834", "#1BAF7A", "#EDA100", "#E87BA4", "#008300", "#8A63D2", "#E34948"]  # 색각이상 검증 순서
+
+
+def series_colors(n):
+    return SERIES[:n] if n <= len(SERIES) else None
+
+
 st.markdown(
     """
-    <style>
-    .block-container {padding-top: 1.2rem; padding-left: 0.8rem; padding-right: 0.8rem; max-width: 900px;}
-    div[data-testid="stMetricValue"] {font-size: 1.35rem;}
-    div[data-testid="stDataFrame"] {overflow-x: auto;}
-    .credit {font-size: 0.75rem; color: #8a8f98; margin-top: -0.6rem; margin-bottom: 0.8rem;}
-    .credit-foot {font-size: 0.72rem; color: #8a8f98; text-align: center;}
-    @media (max-width: 640px) {
-        h1 {font-size: 1.5rem !important;}
-        h2, h3 {font-size: 1.15rem !important;}
-    }
-    </style>
-    """,
+<style>
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+:root { --ink:#16223A; --ink-2:#3B4658; --muted:#687386; --rule:#DCE1E8; --panel:#F3F5F8; --accent:#2A78D6; --accent-soft:#EDF4FC; }
+html, body, .stApp, .stMarkdown, p, li, label, h1, h2, h3, h4, input, textarea, button,
+[data-testid="stMetricValue"], [data-testid="stMetricLabel"], [data-testid="stWidgetLabel"] {
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+}
+.stMarkdown, .hero, .interp, .foot, [data-testid="stAlert"] { word-break: keep-all; overflow-wrap: anywhere; }
+.block-container { padding-top: 3.2rem; padding-left: 1rem; padding-right: 1rem; max-width: 920px; }
+header[data-testid="stHeader"] { background: transparent; }
+
+/* 머리 영역: 앱에서 유일하게 강한 요소 */
+.hero { position: relative; overflow: hidden; background: var(--ink); color: #fff; border-radius: 10px; padding: 1.7rem 1.7rem 1.4rem; margin-bottom: 1.4rem; }
+.hero svg { position: absolute; right: 0; bottom: 0; width: 56%; height: 100%; }
+.hero .curve { fill: none; stroke: #8DB8EC; stroke-width: 1.6; }
+.hero .ci { fill: rgba(42, 120, 214, .32); }
+.hero .base { stroke: #3A4A66; stroke-width: 1; }
+.hero .cut { stroke: #8DB8EC; stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.hero-text { position: relative; max-width: 25rem; }
+.hero h1 { color: #fff; font-size: 1.95rem; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; margin: 0 0 .45rem; padding: 0; }
+.hero .sub { color: #C7D1E1; font-size: .95rem; line-height: 1.6; margin: 0; }
+.hero .credit { color: #8495AF; font-size: .74rem; margin: 1.1rem 0 0; }
+
+/* 데이터 요약 줄 */
+.dstrip { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 1fr; border: 1px solid var(--rule); border-radius: 8px; margin: .2rem 0 1rem; }
+.dstrip > div { padding: .6rem .85rem; border-left: 1px solid var(--rule); min-width: 0; }
+.dstrip > div:first-child { border-left: 0; }
+.dstrip .k { display: block; color: var(--muted); font-size: .74rem; }
+.dstrip .v { display: block; color: var(--ink); font-weight: 650; font-size: 1.02rem; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 결과 영역 */
+h3 { color: var(--ink) !important; font-weight: 700 !important; letter-spacing: -0.015em; border-bottom: 1px solid var(--rule); padding-bottom: .45rem !important; margin-top: .4rem !important; }
+[data-testid="stMetric"] { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .65rem .9rem; }
+[data-testid="stMetricLabel"] p { color: var(--muted); font-size: .8rem; }
+[data-testid="stMetricValue"] { color: var(--ink); font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.interp { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: .8rem 1rem; margin: .7rem 0 1rem; color: var(--ink-2); line-height: 1.7; font-size: .95rem; }
+.interp strong { display: block; color: var(--accent); font-size: .8rem; font-weight: 700; margin-bottom: .15rem; }
+.apa-label { color: var(--muted); font-size: .8rem; margin: .4rem 0 -.3rem; }
+.stButton button, .stDownloadButton button { border-radius: 6px; font-weight: 600; }
+[data-testid="stSidebar"] { border-right: 1px solid var(--rule); }
+.foot { color: var(--muted); font-size: .75rem; line-height: 1.6; text-align: center; border-top: 1px solid var(--rule); padding-top: 1rem; margin-top: 2rem; }
+.foot .who { color: var(--ink-2); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .block-container { padding-left: .7rem; padding-right: .7rem; }
+  .hero { padding: 1.3rem 1.2rem 1.1rem; }
+  .hero svg { width: 100%; opacity: .35; }
+  .hero h1 { font-size: 1.5rem; }
+  .dstrip { grid-template-columns: 1fr 1fr; }
+  .dstrip > div { border-left: 0; border-top: 1px solid var(--rule); }
+  .dstrip > div:first-child { grid-column: 1 / -1; border-top: 0; }
+  .dstrip > div:nth-child(odd):not(:first-child) { border-left: 1px solid var(--rule); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+""",
     unsafe_allow_html=True,
 )
+
+
+def _bell_svg() -> str:
+    """정규분포 곡선 + 95% 구간(±1.96)을 그린 장식용 SVG."""
+    w, h, top, base = 600, 170, 22, 150
+    xs = [-3.6 + 7.2 * i / 120 for i in range(121)]
+    sx = lambda x: (x + 3.6) / 7.2 * w
+    sy = lambda x: base - (base - top) * math.exp(-x * x / 2)
+    curve = "M" + " L".join(f"{sx(x):.1f},{sy(x):.1f}" for x in xs)
+    ci_x = [x for x in xs if -1.96 <= x <= 1.96]
+    ci = (f"M{sx(-1.96):.1f},{base} " + " ".join(f"L{sx(x):.1f},{sy(x):.1f}" for x in ci_x)
+          + f" L{sx(1.96):.1f},{base} Z")
+    cuts = "".join(f'<line class="cut" x1="{sx(v):.1f}" y1="{sy(v):.1f}" x2="{sx(v):.1f}" y2="{base}"/>' for v in (-1.96, 1.96))
+    return (f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none" aria-hidden="true">'
+            f'<path class="ci" d="{ci}"/>{cuts}<path class="curve" d="{curve}"/>'
+            f'<line class="base" x1="0" y1="{base}" x2="{w}" y2="{base}"/></svg>')
+
+
+def interp(text: str, head: str = "해석"):
+    st.markdown(f'<div class="interp"><strong>{html.escape(head)}</strong>{html.escape(text)}</div>',
+                unsafe_allow_html=True)
+
 
 if "report" not in st.session_state:
     st.session_state["report"] = []
@@ -125,7 +202,7 @@ def friendly(fn):
     try:
         return fn()
     except AnalysisError as e:
-        st.warning(f"⚠️ {e}")
+        st.warning(f"{e}")
     except Exception as e:  # 예상하지 못한 오류
         st.error("계산 중 예상하지 못한 문제가 생겼습니다. 변수 선택과 데이터 값을 확인해 주세요.")
         with st.expander("자세한 오류 내용 (개발자용)"):
@@ -135,13 +212,13 @@ def friendly(fn):
 
 def download_button(df: pd.DataFrame, name: str, index=False):
     st.download_button(
-        "⬇️ 결과표 CSV 저장", df.to_csv(index=index).encode("utf-8-sig"),
+        "결과표 CSV로 저장", df.to_csv(index=index).encode("utf-8-sig"),
         file_name=f"{name}.csv", mime="text/csv", key=f"dl_{name}",
     )
 
 
 def apa_box(text: str):
-    st.markdown("**APA 보고 형식** (복사해서 논문·보고서에 붙여 넣기)")
+    st.markdown('<p class="apa-label">APA 보고 형식 · 오른쪽 위 아이콘으로 복사</p>', unsafe_allow_html=True)
     st.code(text, language=None)
 
 
@@ -166,9 +243,9 @@ def _add_report(title, parts):
 def report_button(title: str, parts: list):
     """parts: [("table", 제목, DataFrame, index여부) | ("text", 문장) | ("apa", 문장)]"""
     frozen = [(p[0], p[1], format_table(p[2]), p[3]) if p[0] == "table" else p for p in parts]
-    st.button("📌 이 결과를 보고서에 추가", key=f"rep_{title}", on_click=_add_report, args=(title, frozen))
+    st.button("보고서에 담기", key=f"rep_{title}", on_click=_add_report, args=(title, frozen))
     if st.session_state.get("_last_added") == title:
-        st.caption(f"✅ 보고서에 추가했습니다. (현재 {len(st.session_state['report'])}개) · 메뉴 '{M_REPORT}'에서 내려받기")
+        st.caption(f"보고서에 담았습니다. (현재 {len(st.session_state['report'])}개) · 메뉴 '{M_REPORT}'에서 내려받기")
 
 
 def build_report_html(sections) -> str:
@@ -230,19 +307,24 @@ def read_file(data: bytes, name: str) -> pd.DataFrame:
     return pd.read_excel(bio)
 
 
-st.title("📊 초보자용 통계분석 앱")
-st.markdown(f"<div class='credit'>{CREDIT}</div>", unsafe_allow_html=True)
-st.write("엑셀(.xlsx/.xls) 또는 CSV 파일을 올리고 분석 메뉴를 고르세요. 스마트폰 브라우저에서도 동작합니다.")
+st.markdown(
+    '<section class="hero">' + _bell_svg() + '<div class="hero-text">'
+    '<h1>통계분석 앱</h1>'
+    '<p class="sub">엑셀이나 CSV 파일을 올리면 기초통계부터 매개·조절효과까지 계산하고, '
+    '쉬운 해석과 APA 보고 문장을 함께 보여 줍니다.</p>'
+    f'<p class="credit">{CREDIT}</p></div></section>',
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
-    st.header("⚙️ 설정")
-    st.toggle("📱 좁은 화면용 표(세로로 보기)", key="narrow", help="스마트폰에서 표가 옆으로 길면 켜세요.")
-    st.toggle("📝 APA 형식 표", key="apa", help="소수 둘째 자리, p값 앞의 0 생략(.027) 등 논문 형식으로 표시합니다.")
+    st.header("설정")
+    st.toggle("좁은 화면용 표 (세로로 보기)", key="narrow", help="스마트폰에서 표가 옆으로 길면 켜세요.")
+    st.toggle("APA 형식 표", key="apa", help="소수 둘째 자리, p값 앞의 0 생략(.027) 등 논문 형식으로 표시합니다.")
     missing_mode = st.radio("결측값 처리", ["분석할 때 제외 (listwise)", "평균으로 대체 (숫자형)"],
                             help="평균 대체는 표본 수를 유지하지만 분산을 작게 만들 수 있습니다.")
     st.markdown("---")
-    st.markdown(f"🗂 보고서에 담긴 결과: **{len(st.session_state['report'])}개**")
-    st.markdown("**사용 순서**\n1. 파일 올리기\n2. 분석 메뉴 고르기\n3. 변수 고르기\n4. 결과·해석 확인\n5. 📌 보고서에 추가 → 내려받기")
+    st.markdown(f"보고서에 담긴 결과: **{len(st.session_state['report'])}개**")
+    st.markdown("**사용 순서**\n1. 파일 올리기\n2. 분석 메뉴 고르기\n3. 변수 고르기\n4. 결과와 해석 확인\n5. 보고서에 담고 내려받기")
     st.caption("개인정보(이름·학번·연락처)가 있는 파일은 올리지 마세요.")
     st.caption(CREDIT)
 
@@ -256,7 +338,7 @@ if source == "내 파일 올리기":
     try:
         df = read_file(uploaded.getvalue(), uploaded.name)
     except AnalysisError as e:
-        st.error(f"⚠️ {e}")
+        st.error(f"{e}")
         st.stop()
     except Exception:
         st.error("파일을 읽지 못했습니다. 엑셀/CSV 파일이 맞는지, 첫 줄에 열 이름이 있는지, 파일이 손상되지 않았는지 확인하세요.")
@@ -290,14 +372,22 @@ if missing_mode.startswith("평균"):
     if filled:
         st.info("결측값을 평균으로 채웠습니다: " + ", ".join(f"{k} {v}개" for k, v in filled.items()))
 
-st.success(f"'{data_name}' 불러옴 — 행 {df.shape[0]}개, 열 {df.shape[1]}개 (숫자형 {len(NUM)}개, 집단변수 후보 {len(CAT)}개)")
+st.markdown(
+    '<div class="dstrip">'
+    f'<div><span class="k">불러온 파일</span><span class="v">{html.escape(str(data_name))}</span></div>'
+    f'<div><span class="k">행</span><span class="v">{df.shape[0]:,}</span></div>'
+    f'<div><span class="k">열</span><span class="v">{df.shape[1]}</span></div>'
+    f'<div><span class="k">숫자형</span><span class="v">{len(NUM)}</span></div>'
+    f'<div><span class="k">집단변수</span><span class="v">{len(CAT)}</span></div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
 menu = st.selectbox("분석 메뉴", MENU, index=1)
-st.markdown("---")
 
 
 def need(cols, k, what):
     if len(cols) < k:
-        st.warning(f"⚠️ 이 분석에는 {what}이(가) {k}개 이상 필요합니다. 현재 파일에는 {len(cols)}개입니다.")
+        st.warning(f"이 분석에는 {what}이(가) {k}개 이상 필요합니다. 현재 파일에는 {len(cols)}개입니다.")
         st.stop()
 
 
@@ -326,7 +416,7 @@ elif menu == M_DESC:
     with tab1:
         sel = st.multiselect("변수 선택", NUM, default=NUM_DEF[:3]) if NUM else []
         if not NUM:
-            st.warning("⚠️ 숫자형 변수가 없습니다. '빈도·비율' 탭을 이용하세요.")
+            st.warning("숫자형 변수가 없습니다. '빈도·비율' 탭을 이용하세요.")
         elif sel:
             res = A.descriptive_statistics(df, sel)
             show_table(res)
@@ -342,7 +432,7 @@ elif menu == M_DESC:
                 bins = st.slider("막대 개수", 3, 30, min(10, max(3, s.nunique())))
                 counts, edges = np.histogram(s, bins=bins)
                 hist = pd.DataFrame({"구간": [f"{edges[i]:.1f}~{edges[i+1]:.1f}" for i in range(bins)], "빈도": counts})
-                st.bar_chart(hist, x="구간", y="빈도")
+                st.bar_chart(hist, x="구간", y="빈도", color=ACCENT)
             else:
                 st.info("값이 하나뿐이라 그래프를 그리지 않습니다.")
         else:
@@ -357,7 +447,7 @@ elif menu == M_DESC:
             if ft is not None:
                 ft["값"] = ft["값"].astype(str)
                 show_table(ft)
-                st.bar_chart(ft, x="값", y="빈도")
+                st.bar_chart(ft, x="값", y="빈도", color=ACCENT)
                 report_button(f"빈도분석 - {col}", [("table", f"{col} 빈도·비율", ft, False)])
 
 # ---------------------------------------------------------------------------
@@ -378,7 +468,7 @@ elif menu == M_NORM:
         if res["qq"]:
             v = st.selectbox("Q-Q 그림을 볼 변수", list(res["qq"]))
             st.markdown("**Q-Q 그림** (점이 기준선 위에 있을수록 정규분포에 가까움)")
-            st.scatter_chart(res["qq"][v], x="이론 분위수", y=["관측값", "기준선"])
+            st.scatter_chart(res["qq"][v], x="이론 분위수", y=["관측값", "기준선"], color=SERIES[:2])
         t = res["table"].dropna(subset=["p"])
         apa_box("; ".join(f"{r['변수']}: W = {A.apa_num(r['Shapiro-Wilk W'], 3, False)}, "
                           f"{'p ' + A.apa_p(r['p']) if r['p'] < .001 else 'p = ' + A.apa_p(r['p'])}" for _, r in t.iterrows()) or "-")
@@ -418,7 +508,7 @@ elif menu == M_CORR:
             "layer": [
                 {"mark": "rect", "encoding": {
                     "color": {"field": "r", "type": "quantitative",
-                              "scale": {"domain": [-1, 1], "scheme": "redblue"}, "title": "r"},
+                              "scale": {"domain": [-1, 0, 1], "range": ["#E34948", "#F0EFEC", "#2A78D6"]}, "title": "r"},
                     "tooltip": [{"field": "x"}, {"field": "y"}, {"field": "r", "format": ".3f"}]}},
                 {"mark": {"type": "text", "fontSize": 11}, "encoding": {"text": {"field": "label"}}},
             ],
@@ -426,7 +516,7 @@ elif menu == M_CORR:
         with st.expander("상관계수·p값·n 자세히 보기"):
             show_table(res["pairs"])
         download_button(res["pairs"], "상관분석")
-        st.info("📝 해석: " + A.correlation_sentence(res))
+        interp(A.correlation_sentence(res))
         report_button("상관분석", [("table", f"상관계수 ({'Pearson' if method == 'pearson' else 'Spearman'})", res["star"], True),
                                 ("table", "쌍별 상관계수", res["pairs"], False),
                                 ("text", A.correlation_sentence(res))])
@@ -458,13 +548,13 @@ elif menu == M_T:
                             ("Cohen's d", f"{res['d']:.3f}"), ("Hedges' g", f"{res['g']:.3f}")])
                 notice_dropped(res["n"], res["dropped"])
                 show_table(res["desc"])
-                st.bar_chart(res["desc"], x="집단", y="평균")
+                st.bar_chart(res["desc"], x="집단", y="평균", color=ACCENT)
                 show_table(res["table"])
                 st.caption(f"Levene 등분산 검정: F = {res['levene_F']:.3f}, {A.p_text(res['levene_p'])} → "
                            + ("등분산 가정 기각, **Welch** 결과를 보세요." if res["use_welch"] else "등분산 가정 유지, **Student** 결과를 보세요."))
                 download_button(res["table"], "독립표본t검정")
                 sent = A.t_sentence("independent", res)
-                st.info("📝 해석: " + sent)
+                interp(sent)
                 report_button(f"독립표본 t검정 - {y} by {g}", [("table", "집단별 기술통계", res["desc"], False),
                                                              ("table", "t검정", res["table"], False), ("text", sent)])
     elif kind.startswith("대응"):
@@ -479,12 +569,12 @@ elif menu == M_T:
                         ("평균 변화", f"{row['평균차']:.3f}"), ("Cohen's dz", f"{res['d']:.3f}")])
             notice_dropped(res["n"], res["dropped"])
             show_table(res["desc"])
-            st.bar_chart(res["desc"], x="변수", y="평균")
+            st.bar_chart(res["desc"], x="변수", y="평균", color=ACCENT)
             show_table(res["table"])
             st.caption(f"전·후 상관 r = {res['r']:.3f}")
             download_button(res["table"], "대응표본t검정")
             sent = A.t_sentence("paired", res)
-            st.info("📝 해석: " + sent)
+            interp(sent)
             report_button(f"대응표본 t검정 - {b}→{a}", [("table", "기술통계", res["desc"], False),
                                                       ("table", "대응표본 t검정", res["table"], False), ("text", sent)])
     else:
@@ -497,7 +587,7 @@ elif menu == M_T:
             metric_row([(f"t({int(row['df'])})", f"{row['t']:.3f}"), ("p", fmt_p(row["p"]))])
             show_table(res["table"])
             sent = A.t_sentence("one", res)
-            st.info("📝 해석: " + sent)
+            interp(sent)
             report_button(f"일표본 t검정 - {y}", [("table", "일표본 t검정", res["table"], False), ("text", sent)])
 
 # ---------------------------------------------------------------------------
@@ -519,18 +609,18 @@ elif menu == M_CHI:
         show_table(res["table"], index=True)
         st.markdown("**행 백분율 (%)**")
         show_table(res["row_pct"], digits=1, index=True)
-        st.bar_chart(res["table"])
+        st.bar_chart(res["table"], color=series_colors(res["table"].shape[1]))
         with st.expander("기대빈도·표준화 잔차 보기 (|잔차| > 1.96 인 칸이 차이를 만든 칸)"):
             show_table(res["expected"], digits=2, index=True)
             show_table(res["std_resid"], digits=2, index=True)
         if res["low_expected_pct"] > 20:
-            st.warning(f"⚠️ 기대빈도가 5보다 작은 칸이 {res['low_expected_pct']:.0f}%입니다(20% 초과). 카이제곱 결과를 조심해서 해석하세요."
+            st.warning(f"기대빈도가 5보다 작은 칸이 {res['low_expected_pct']:.0f}%입니다(20% 초과). 카이제곱 결과를 조심해서 해석하세요."
                        + (f" 2×2 표이므로 Fisher 정확검정 p = {fmt_p(res['fisher_p'])}를 참고하세요." if res["fisher_p"] is not None else ""))
         elif res["fisher_p"] is not None:
             st.caption(f"Fisher 정확검정 p = {fmt_p(res['fisher_p'])}")
         download_button(res["table"].reset_index(), "교차표")
         sent = A.chi_sentence(res)
-        st.info("📝 해석: " + sent)
+        interp(sent)
         report_button(f"교차분석 - {r_var}×{c_var}", [("table", "교차표", res["table"], True),
                                                      ("table", "행 백분율(%)", res["row_pct"], True), ("text", sent)])
 
@@ -563,10 +653,10 @@ elif menu == M_ALPHA:
             st.caption("기준(관례): α ≥ .9 매우 좋음 · .8 좋음 · .7 수용 가능 · .6 미만 낮음. "
                        "수정된 문항-총점 상관이 .3 미만이거나 음수인 문항은 검토 대상입니다.")
             if res["negative"]:
-                st.warning(f"⚠️ 총점과 반대로 움직이는 문항: {', '.join(res['negative'])} → 역문항이면 위에서 '역문항'으로 지정하세요.")
+                st.warning(f"총점과 반대로 움직이는 문항: {', '.join(res['negative'])} → 역문항이면 위에서 '역문항'으로 지정하세요.")
             download_button(res["items"], "신뢰도분석")
             sent = A.alpha_sentence(res)
-            st.info("📝 해석: " + sent)
+            interp(sent)
             apa_box(f"Cronbach's α = {A.apa_num(res['alpha'], 2, False)} ({res['k']} items, N = {res['n']})")
             report_button("신뢰도 분석", [("table", "문항 통계", res["items"], False), ("text", sent)])
 
@@ -595,9 +685,9 @@ def show_regression(res, title):
         else:
             st.caption("VIF가 모두 10 미만이면 다중공선성 문제가 크지 않다고 봅니다.")
     st.markdown("**잔차 그래프** (예측값 vs 잔차: 0 주변에 고르게 퍼져 있으면 좋음)")
-    st.scatter_chart(pd.DataFrame({"예측값": res["fitted"], "잔차": res["resid"]}), x="예측값", y="잔차")
+    st.scatter_chart(pd.DataFrame({"예측값": res["fitted"], "잔차": res["resid"]}), x="예측값", y="잔차", color=ACCENT)
     sent = A.regression_sentence(res)
-    st.info("📝 해석: " + sent)
+    interp(sent)
     apa_box(A.apa_regression(res))
     parts += [("text", sent), ("apa", A.apa_regression(res))]
     report_button(title, parts)
@@ -616,7 +706,7 @@ if menu == M_REG1:
         d = res["data"].sort_values(x)
         b0, b1 = res["coef"]["B"][0], res["coef"]["B"][1]
         plot = pd.DataFrame({x: d[x], "관측값": d[y], "회귀선(예측값)": b0 + b1 * d[x]})
-        st.scatter_chart(plot, x=x, y=["관측값", "회귀선(예측값)"])
+        st.scatter_chart(plot, x=x, y=["관측값", "회귀선(예측값)"], color=SERIES[:2])
 
 elif menu == M_REG2:
     st.subheader("8. 다중회귀 (X 여러 개 → Y)")
@@ -653,7 +743,7 @@ elif menu == M_AOV1:
         notice_dropped(res["n"], res["dropped"])
         st.markdown("**집단별 기술통계**")
         show_table(res["desc"])
-        st.bar_chart(res["desc"].assign(집단=res["desc"]["집단"].astype(str)), x="집단", y="평균")
+        st.bar_chart(res["desc"].assign(집단=res["desc"]["집단"].astype(str)), x="집단", y="평균", color=ACCENT)
         st.markdown("**분산분석표**")
         show_table(res["table"])
         download_button(res["table"], "일원분산분석표")
@@ -667,7 +757,7 @@ elif menu == M_AOV1:
                 f"{'통계적으로 유의하게 달랐다' if res['p'] < 0.05 else '유의하게 다르다고 보기 어렵다'}"
                 f"(F({res['df1']}, {res['df2']})={res['F']:.2f}, {A.p_text(res['p'])}, η²={res['eta2']:.3f}, {size} 효과). "
                 + (f"사후검정에서 차이가 유의한 쌍: {', '.join(sig_pairs)}." if sig_pairs else "사후검정에서 유의한 쌍은 없었다."))
-        st.info("📝 해석: " + sent)
+        interp(sent)
         apa_box(A.apa_anova1(res))
         report_button(f"일원분산분석 - {y} by {g}", [("table", "집단별 기술통계", res["desc"], False),
                                                     ("table", "분산분석표", res["table"], False),
@@ -703,12 +793,12 @@ elif menu == M_AOV2:
         plot = res["cell_means"].copy()
         plot.index = plot.index.astype(str)
         plot.columns = [f"{b}={c}" for c in plot.columns]
-        st.line_chart(plot)
+        st.line_chart(plot, color=series_colors(plot.shape[1]))
         t = res["table"]
         lines = [f"{t['변동원'][i]}: F={t['F'][i]:.2f}, {A.p_text(t['p'][i])}, 부분η²={t['부분 η²'][i]:.3f}" for i in range(3)]
-        st.info("📝 결과 요약: " + " / ".join(lines))
+        interp(" / ".join(lines), "결과 요약")
         if res["interaction_p"] < 0.05:
-            st.warning(f"⚠️ 상호작용이 유의합니다. '{a}'의 효과가 '{b}' 수준에 따라 다르므로, "
+            st.warning(f"상호작용이 유의합니다. '{a}'의 효과가 '{b}' 수준에 따라 다르므로, "
                        "각 요인의 주효과만 따로 해석하지 말고 상호작용 그래프와 칸 평균을 함께 보고 해석하세요.")
         apa_box(A.apa_anova2(res))
         report_button(f"이원분산분석 - {y} by {a}×{b}", [("table", "분산분석표(Type III)", res["table"], False),
@@ -744,7 +834,7 @@ elif menu == M_MED:
         st.caption(f"Sobel 검정: z={res['sobel_z']:.3f}, {A.p_text(res['sobel_p'])} · "
                    f"부트스트랩 {res['n_boot']}회 (난수 고정, 다시 실행해도 같은 결과)")
         sent = A.mediation_sentence(res)
-        st.info("📝 해석: " + sent)
+        interp(sent)
         apa_box(A.apa_mediation(res))
         report_button(f"매개효과 - {x}→{m}→{y}", [("table", "경로계수", res["paths"], False),
                                                  ("text", sent), ("apa", A.apa_mediation(res))])
@@ -777,9 +867,9 @@ elif menu == M_MOD:
         for label, wv in zip(["W 낮음", "W 평균", "W 높음"], res["w_levels"]):
             plot[label] = B[0] + B[1] * xs + B[2] * wv + B[3] * xs * wv
         st.markdown("**단순기울기 그래프**")
-        st.line_chart(plot, x=x, y=["W 낮음", "W 평균", "W 높음"])
+        st.line_chart(plot, x=x, y=["W 낮음", "W 평균", "W 높음"], color=SERIES[:3])
         sent = A.moderation_sentence(res)
-        st.info("📝 해석: " + sent)
+        interp(sent)
         apa_box(A.apa_moderation(res))
         report_button(f"조절효과 - {x}×{w}→{y}", [("table", "회귀계수", res["coef"], False),
                                                  ("table", "단순기울기", res["simple_slopes"], False),
@@ -799,7 +889,7 @@ elif menu == M_CHECK:
         with st.spinner("모든 분석을 다시 계산하는 중..."):
             chk = A.reference_check(df)
         ok = (chk["판정"] == "일치").sum()
-        metric_row([("일치 항목", f"{ok} / {len(chk)}"), ("판정", "✅ 모두 일치" if ok == len(chk) else "⚠️ 확인 필요")])
+        metric_row([("일치 항목", f"{ok} / {len(chk)}"), ("판정", "모두 일치" if ok == len(chk) else "확인 필요")])
         out = chk.copy()
         out["앱 결과"] = out["앱 결과"].round(6)
         out["차이"] = out["차이"].map(lambda v: f"{v:.2e}" if pd.notna(v) else "")
@@ -815,7 +905,7 @@ elif menu == M_REPORT:
     st.subheader("14. 보고서 내려받기")
     rep = st.session_state["report"]
     if not rep:
-        st.info("아직 담긴 결과가 없습니다. 각 분석 화면에서 **📌 이 결과를 보고서에 추가**를 누르세요.")
+        st.info("아직 담긴 결과가 없습니다. 각 분석 화면에서 **보고서에 담기**를 누르세요.")
     else:
         st.write(f"담긴 결과 **{len(rep)}개**")
         for i, sec in enumerate(rep, 1):
@@ -824,17 +914,18 @@ elif menu == M_REPORT:
         html_doc = build_report_html(rep)
         stamp = datetime.now().strftime("%Y%m%d_%H%M")
         c1, c2 = st.columns(2)
-        c1.download_button("⬇️ HTML 보고서", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.html",
+        c1.download_button("HTML 보고서 내려받기", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.html",
                            mime="text/html", key="dl_report_html")
-        c2.download_button("⬇️ Word에서 열기(.doc)", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.doc",
+        c2.download_button("Word 파일(.doc) 내려받기", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.doc",
                            mime="application/msword", key="dl_report_doc")
         st.caption("HTML은 브라우저에서 열고 인쇄(Ctrl+P) → 'PDF로 저장'하면 PDF가 됩니다. .doc 파일은 Word에서 바로 열 수 있습니다.")
-        if st.button("🗑 보고서 비우기"):
+        if st.button("보고서 비우기"):
             st.session_state["report"] = []
             st.session_state["_last_added"] = None
             st.rerun()
 
-st.markdown("---")
-st.caption("교육용 통계분석 앱 · 결과는 통계적 관계를 보여 줄 뿐 인과관계를 증명하지 않습니다. "
-           "실제 연구에 쓰기 전 기준데이터로 검산하세요.")
-st.markdown(f"<div class='credit-foot'>{CREDIT}</div>", unsafe_allow_html=True)
+st.markdown(
+    '<div class="foot">결과는 변수 사이의 통계적 관계를 보여 줄 뿐 인과관계를 증명하지 않습니다.<br>'
+    f'실제 연구에 쓰기 전에 기준데이터로 검산하세요.<br><span class="who">{CREDIT}</span></div>',
+    unsafe_allow_html=True,
+)

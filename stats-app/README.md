@@ -42,7 +42,8 @@
 ### 방법 1. 내 PC에서 (가장 쉬움)
 1. 이 저장소에서 **Code → Download ZIP** 으로 내려받아 압축을 풉니다.
 2. **Windows**: `run_windows.bat` 더블클릭
-   **macOS/Linux**: 터미널에서 `bash run_mac_linux.sh`
+   **macOS**: `start_mac.command` 더블클릭 (처음 한 번 "확인되지 않은 개발자" 창이 뜨면 우클릭 → 열기 → 열기)
+   **Linux**: 터미널에서 `bash run_mac_linux.sh`
 3. 잠시 뒤 브라우저에 `http://localhost:8501` 이 열립니다.
 4. 앱에서 **예제 데이터 사용 → 기준데이터**를 고르면 파일 없이 바로 시험할 수 있습니다.
 
@@ -118,8 +119,9 @@ GitHub에 올리면 **Actions** 탭에서 이 테스트가 자동으로 실행�
 ├─ app.py                     화면·업로드·메뉴 (Streamlit)
 ├─ analysis.py                통계 계산 (numpy·pandas·scipy)
 ├─ requirements.txt           필요한 패키지
-├─ run_windows.bat            Windows 원클릭 실행
-├─ run_mac_linux.sh           macOS/Linux 원클릭 실행
+├─ run_windows.bat            Windows 더블클릭 실행
+├─ start_mac.command          macOS 더블클릭 실행
+├─ run_mac_linux.sh           macOS/Linux 터미널 실행
 ├─ .streamlit/config.toml     업로드 용량·테마 설정
 ├─ data/
 │  ├─ reference_data.xlsx     교수자 제공 검산용 익명 데이터 (36행)
@@ -145,6 +147,8 @@ Python 3.10+ · Streamlit 1.35+ · pandas · numpy · scipy · openpyxl · xlrd 
 - Tukey HSD: `scipy.stats.tukey_hsd`, 등분산: `scipy.stats.levene`, 정규성: `scipy.stats.shapiro`
 - 상관 히트맵은 Streamlit 내장 Vega-Lite 차트 사용(추가 설치 없음)
 - 매개효과 부트스트랩은 난수를 고정해 다시 실행해도 같은 결과
+- 화면: Pretendard 글꼴, 잉크 네이비 머리 영역(정규분포 곡선과 95% 구간), 스마트폰 대응 레이아웃
+- 차트 색은 색각이상(적록·청황) 구분 검증을 통과한 순서(파랑·주황·청록…)로 고정
 
 ## ⚠️ 제한점
 
