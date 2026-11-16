@@ -16,7 +16,6 @@ import streamlit as st
 
 import analysis as A
 from analysis import AnalysisError
-from report_export import build_report_docx
 
 CREDIT = "by 2026 금오공대 빅데이터 8조"
 HERE = Path(__file__).resolve().parent
@@ -194,7 +193,7 @@ def metric_row(items):
 def notice_dropped(n, dropped):
     msg = f"분석에 사용한 사례 수: **{n}개**"
     if dropped:
-        msg += f" (결측·무한값·숫자 아닌 값이 있는 {dropped}개 행은 제외)"
+        msg += f" (결측·숫자 아닌 값이 있는 {dropped}개 행은 제외)"
     st.caption(msg)
 
 
@@ -237,7 +236,6 @@ def _add_report(title, parts):
     st.session_state["report"].append({
         "title": title, "parts": parts, "data": st.session_state.get("data_name", ""),
         "time": datetime.now().strftime("%H:%M:%S"),
-        "missing": st.session_state.get("missing_description", "분석할 때 제외") + (" / 상관계수별 유효 쌍 사용" if title == "상관분석" else ""),
     })
     st.session_state["_last_added"] = title
 
@@ -254,7 +252,7 @@ def build_report_html(sections) -> str:
     body = []
     for i, sec in enumerate(sections, 1):
         body.append(f"<h2>{i}. {html.escape(sec['title'])}</h2>")
-        body.append(f"<p class='meta'>데이터: {html.escape(str(sec['data']))} · 분석 시각 {sec['time']} · 결측 처리: {html.escape(sec.get('missing', '기록 없음'))}</p>")
+        body.append(f"<p class='meta'>데이터: {html.escape(str(sec['data']))} · 분석 시각 {sec['time']}</p>")
         for part in sec["parts"]:
             if part[0] == "table":
                 _, cap, df, idx = part
@@ -365,7 +363,6 @@ if df.columns.duplicated().any():
     st.stop()
 
 st.session_state["data_name"] = data_name
-st.session_state["missing_description"] = missing_mode
 NUM = A.numeric_columns(df)
 CAT = A.categorical_columns(df)
 NUM_DEF = [c for c in NUM if c.lower() not in ("id", "no", "번호", "순번")] or NUM  # 기본 선택에서 ID 열 제외
@@ -374,8 +371,6 @@ if missing_mode.startswith("평균"):
     df, filled = A.impute_mean(df, NUM)
     if filled:
         st.info("결측값을 평균으로 채웠습니다: " + ", ".join(f"{k} {v}개" for k, v in filled.items()))
-        st.session_state["missing_description"] += " / " + ", ".join(f"{k}: {v}개" for k, v in filled.items())
-    st.warning("평균 대체는 분산·상관·표준오차를 왜곡할 수 있습니다. 통계적 검정과 보고서 해석에 주의하세요.")
 
 st.markdown(
     '<div class="dstrip">'
@@ -468,11 +463,11 @@ elif menu == M_NORM:
     if res:
         show_table(res["table"])
         download_button(res["table"], "정규성검정")
-        st.caption("Shapiro-Wilk p ≥ .05는 정규성을 입증하는 것이 아니라 정규성 가설을 기각하지 못했다는 뜻입니다. "
-                   "왜도·첨도와 Q-Q 그림을 함께 보세요. 5,000개 초과 자료는 무작위 5,000개(시드 2026)로 검정하며, 표의 '검정 n'에 실제 수를 표시합니다. 기술통계와 Q-Q 그림은 전체 유효값 기준입니다.")
+        st.caption("Shapiro-Wilk p ≥ .05 이면 정규분포 가정을 기각하지 않습니다. 표본이 크면(수백 이상) 작은 차이도 유의하게 나오므로 "
+                   "왜도(|값| < 2)·첨도(|값| < 7)와 Q-Q 그림을 함께 보세요.")
         if res["qq"]:
             v = st.selectbox("Q-Q 그림을 볼 변수", list(res["qq"]))
-            st.markdown("**Q-Q 그림** (점들이 기준선에 가까울수록 정규분포에 가까움)")
+            st.markdown("**Q-Q 그림** (점이 기준선 위에 있을수록 정규분포에 가까움)")
             st.scatter_chart(res["qq"][v], x="이론 분위수", y=["관측값", "기준선"], color=SERIES[:2])
         t = res["table"].dropna(subset=["p"])
         apa_box("; ".join(f"{r['변수']}: W = {A.apa_num(r['Shapiro-Wilk W'], 3, False)}, "
@@ -484,7 +479,6 @@ elif menu == M_NORM:
 # ---------------------------------------------------------------------------
 elif menu == M_CORR:
     st.subheader(M_CORR)
-    st.caption("상관분석은 변수 쌍별로 유효한 행을 사용합니다(pairwise). 각 쌍의 n을 확인하세요. 평균 대체를 선택하면 먼저 대체한 자료로 계산합니다.")
     need(NUM, 2, "숫자형 변수")
     method_lbl = st.radio("방법", ["Pearson (연속형, 선형관계)", "Spearman (순위·리커트, 비정규)"], horizontal=True)
     method = "pearson" if method_lbl.startswith("Pearson") else "spearman"
@@ -922,9 +916,9 @@ elif menu == M_REPORT:
         c1, c2 = st.columns(2)
         c1.download_button("HTML 보고서 내려받기", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.html",
                            mime="text/html", key="dl_report_html")
-        c2.download_button("Word 파일(.docx) 내려받기", build_report_docx(rep, CREDIT), file_name=f"통계분석보고서_{stamp}.docx",
-                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key="dl_report_doc")
-        st.caption("HTML은 브라우저에서 열고 인쇄 → 'PDF로 저장'할 수 있습니다. Word 파일은 실제 DOCX 형식이며 표와 문장을 편집할 수 있습니다.")
+        c2.download_button("Word 파일(.doc) 내려받기", html_doc.encode("utf-8"), file_name=f"통계분석보고서_{stamp}.doc",
+                           mime="application/msword", key="dl_report_doc")
+        st.caption("HTML은 브라우저에서 열고 인쇄(Ctrl+P) → 'PDF로 저장'하면 PDF가 됩니다. .doc 파일은 Word에서 바로 열 수 있습니다.")
         if st.button("보고서 비우기"):
             st.session_state["report"] = []
             st.session_state["_last_added"] = None

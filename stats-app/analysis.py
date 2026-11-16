@@ -27,7 +27,7 @@ def numeric_columns(df: pd.DataFrame, min_ratio: float = 0.8) -> list[str]:
         s = df[c]
         if pd.api.types.is_bool_dtype(s):
             continue
-        conv = pd.to_numeric(s, errors="coerce").replace([np.inf, -np.inf], np.nan)
+        conv = pd.to_numeric(s, errors="coerce")
         nonmissing = s.notna().sum()
         if nonmissing and conv.notna().sum() / nonmissing >= min_ratio:
             cols.append(c)
@@ -69,7 +69,7 @@ def _numeric_frame(df: pd.DataFrame, cols: list[str]) -> tuple[pd.DataFrame, int
                 "숫자형 변수를 선택하거나 엑셀에서 값을 고치세요."
             )
     before = len(out)
-    out = out.replace([np.inf, -np.inf], np.nan).dropna()
+    out = out.dropna()
     return out, before - len(out)
 
 
@@ -88,7 +88,7 @@ def p_text(p: float) -> str:
 def descriptive_statistics(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     rows = []
     for col in columns:
-        s = pd.to_numeric(df[col], errors="coerce").replace([np.inf, -np.inf], np.nan)
+        s = pd.to_numeric(df[col], errors="coerce")
         q1, q3 = s.quantile(.25), s.quantile(.75)
         rows.append({
             "변수": col,
@@ -123,36 +123,16 @@ def frequency_table(df: pd.DataFrame, col: str) -> pd.DataFrame:
 # 2·3. 회귀분석 (최소제곱법)
 # ---------------------------------------------------------------------------
 def _ols_core(y: np.ndarray, X: np.ndarray):
-    """절편 포함 OLS. 중심화·척도조정 후 SVD로 풀고 원래 단위로 복원."""
-    y, X = np.asarray(y, dtype=float), np.asarray(X, dtype=float)
+    """X 는 절편 열 포함. 계수, 공분산, 잔차, df_resid 반환."""
     n, k = X.shape
-    if not np.isfinite(y).all() or not np.isfinite(X).all():
-        raise AnalysisError("유한한 숫자만 분석할 수 있습니다. 무한값과 잘못된 값을 확인하세요.")
-    if n <= k:
-        raise AnalysisError("표본 수가 추정할 계수 수보다 많아야 합니다.")
-    means = X[:, 1:].mean(axis=0)
-    scales = X[:, 1:].std(axis=0)
-    if (scales == 0).any() or not np.isfinite(scales).all():
-        raise AnalysisError("값이 모두 같거나 수치 범위가 지나치게 큰 변수가 있습니다.")
-    Z = np.column_stack([np.ones(n), (X[:, 1:] - means) / scales])
-    u, singular, vt = np.linalg.svd(Z, full_matrices=False)
-    if singular[-1] <= np.finfo(float).eps * max(Z.shape) * singular[0]:
-        raise AnalysisError("독립변수끼리 완전히 겹칩니다(완전 다중공선성). 겹치는 변수를 빼세요.")
-    inv_z = (vt.T / singular) @ u.T
-    scaled_beta = inv_z @ y
-    transform = np.eye(k)
-    transform[0, 1:] = -means / scales
-    transform[1:, 1:] = np.diag(1 / scales)
-    beta = transform @ scaled_beta
-    fitted = Z @ scaled_beta
+    XtX_inv = np.linalg.pinv(X.T @ X)
+    beta = XtX_inv @ X.T @ y
+    fitted = X @ beta
     resid = y - fitted
     df_resid = n - k
     sse = float(resid @ resid)
     sigma2 = sse / df_resid
-    covariance_scaled = (vt.T / singular**2) @ vt
-    cov = sigma2 * (transform @ covariance_scaled @ transform.T)
-    if not np.isfinite(beta).all() or not np.isfinite(cov).all():
-        raise AnalysisError("변수의 수치 범위가 너무 큽니다. 단위를 조정한 후 다시 분석하세요.")
+    cov = sigma2 * XtX_inv
     return beta, cov, fitted, resid, df_resid, sse
 
 
@@ -196,10 +176,10 @@ def regression(df: pd.DataFrame, y: str, xs: list[str], interaction: tuple[str, 
     if yv.std() == 0:
         raise AnalysisError(f"종속변수 '{y}' 값이 모두 같아서 분석할 수 없습니다.")
     Xm = np.column_stack([np.ones(n), X.to_numpy(float)])
+    if np.linalg.matrix_rank(Xm) < Xm.shape[1]:
+        raise AnalysisError("독립변수끼리 완전히 겹칩니다(완전 다중공선성). 겹치는 변수를 빼세요.")
+
     beta, cov, fitted, resid, df_resid, sse = _ols_core(yv, Xm)
-    numerical_noise = np.finfo(float).eps * max(Xm.shape) * max(np.linalg.norm(yv), 1.)
-    if sse <= numerical_noise**2:
-        raise AnalysisError("자료가 회귀선에 완벽하게 맞아 잔차가 사실상 0입니다. p값과 신뢰구간을 보고할 수 없습니다.")
     se = np.sqrt(np.diag(cov))
     t = beta / se
     p = 2 * stats.t.sf(np.abs(t), df_resid)
@@ -208,7 +188,7 @@ def regression(df: pd.DataFrame, y: str, xs: list[str], interaction: tuple[str, 
     r2 = 1 - sse / sst
     p_x = k - 1
     adj = 1 - (1 - r2) * (n - 1) / df_resid
-    f = max(0., (sst - sse) / p_x) / (sse / df_resid)
+    f = (r2 / p_x) / ((1 - r2) / df_resid)
     f_p = stats.f.sf(f, p_x, df_resid)
 
     sd_x = np.r_[np.nan, X.std(ddof=1).to_numpy()]
@@ -239,9 +219,8 @@ def regression_sentence(res: dict) -> str:
     for _, r in c.iterrows():
         sig = "통계적으로 유의했다" if r["p"] < 0.05 else "통계적으로 유의하지 않았다"
         direction = "증가" if r["B"] > 0 else "감소"
-        condition = "다른 독립변수를 일정하게 두었을 때 " if len(res['xs']) > 1 else ""
         parts.append(
-            f"{condition}'{r['변수']}'가 1 증가할 때 '{res['y']}'는 평균 {abs(r['B']):.3f} {direction}하는 관계가 있었으며 "
+            f"'{r['변수']}'가 1 증가할 때 '{res['y']}'는 평균 {abs(r['B']):.3f} {direction}하는 관계가 있었으며 "
             f"이는 {sig}(B={r['B']:.3f}, {p_text(r['p'])})."
         )
     head = (f"모형은 '{res['y']}' 분산의 {res['r2']*100:.1f}%를 설명했다"
@@ -257,7 +236,7 @@ def _prep_groups(df, y, factors):
     for f in factors:
         if f not in df.columns:
             raise AnalysisError(f"'{f}' 열을 찾을 수 없습니다.")
-    yv = pd.to_numeric(df[y], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    yv = pd.to_numeric(df[y], errors="coerce")
     bad = df[y].notna() & yv.isna()
     if bad.sum() >= max(1, df[y].notna().sum() * 0.2):
         raise AnalysisError(f"종속변수 '{y}'에 숫자가 아닌 값이 많습니다. 숫자형 변수를 선택하세요.")
@@ -485,7 +464,6 @@ def moderation(df: pd.DataFrame, x: str, w: str, y: str, center: bool = False) -
     # R² 증가량 (상호작용 추가 전후)
     base = regression(data, y, [x, w])
     res.update({
-        "dropped": dropped,
         "simple_slopes": pd.DataFrame(rows), "delta_r2": res["r2"] - base["r2"],
         "x": x, "w": w, "centered": center,
         "int_row": res["coef"].iloc[3], "w_levels": [w_mean - w_sd, w_mean, w_mean + w_sd],
@@ -584,21 +562,18 @@ def normality(df: pd.DataFrame, columns: list[str]) -> dict:
         raise AnalysisError("정규성을 확인할 숫자형 변수를 1개 이상 고르세요.")
     rows, qq = [], {}
     for c in columns:
-        s = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        s = pd.to_numeric(df[c], errors="coerce").dropna()
         n = len(s)
-        row = {"변수": c, "n": n, "검정 n": 0, "검정 표본": "검정하지 않음", "평균": s.mean(), "표준편차": s.std(), "왜도": s.skew(), "첨도": s.kurt(),
+        row = {"변수": c, "n": n, "평균": s.mean(), "표준편차": s.std(), "왜도": s.skew(), "첨도": s.kurt(),
                "Shapiro-Wilk W": np.nan, "p": np.nan, "판정": ""}
         if n < 3:
             row["판정"] = "사례 3개 미만: 검정 불가"
         elif s.nunique() == 1:
             row["판정"] = "값이 모두 같음: 검정 불가"
         else:
-            values = s.to_numpy(float)
-            test_values = np.random.default_rng(2026).choice(values, 5000, replace=False) if n > 5000 else values
-            w, p = stats.shapiro(test_values)
+            w, p = stats.shapiro(s.to_numpy(float)[:5000])
             row.update({"Shapiro-Wilk W": w, "p": p,
-                        "검정 n": len(test_values), "검정 표본": "무작위 5,000개(시드 2026)" if n > 5000 else "전체 유효값",
-                        "판정": "정규성 가설을 기각하지 못함" if p >= 0.05 else "정규성 가설 기각"})
+                        "판정": "정규분포 가정 가능" if p >= 0.05 else "정규분포에서 벗어남"})
             (osm, osr), (slope, inter, r) = stats.probplot(s.to_numpy(float), dist="norm")
             qq[c] = pd.DataFrame({"이론 분위수": osm, "관측값": osr, "기준선": inter + slope * osm})
         rows.append(row)
@@ -612,7 +587,7 @@ def correlation(df: pd.DataFrame, columns: list[str], method: str = "pearson") -
     if len(columns) < 2:
         raise AnalysisError("상관분석에는 숫자형 변수가 2개 이상 필요합니다.")
     _check_distinct(list(columns))
-    data = df[list(columns)].apply(pd.to_numeric, errors="coerce").replace([np.inf, -np.inf], np.nan)
+    data = df[list(columns)].apply(pd.to_numeric, errors="coerce")
     k = len(columns)
     r = np.eye(k)
     p = np.zeros((k, k))
@@ -848,13 +823,10 @@ def cronbach_alpha(df: pd.DataFrame, items: list[str]) -> dict:
     if (x.std(axis=0, ddof=1) == 0).any():
         raise AnalysisError("모든 응답이 같은 문항이 있어 신뢰도를 계산할 수 없습니다.")
     alpha = _alpha(x)
-    if not np.isfinite(alpha):
-        raise AnalysisError("문항 총점의 분산이 0이어서 신뢰도를 계산할 수 없습니다. 역문항 코딩과 응답 자료를 확인하세요.")
     corr = np.corrcoef(x, rowvar=False)
     k = x.shape[1]
     mean_r = (corr.sum() - k) / (k * (k - 1))
-    denominator = 1 + (k - 1) * mean_r
-    std_alpha = k * mean_r / denominator if denominator > np.finfo(float).eps else np.nan
+    std_alpha = k * mean_r / (1 + (k - 1) * mean_r)
     rows = []
     total = x.sum(axis=1)
     for i, c in enumerate(items):
@@ -872,8 +844,6 @@ def cronbach_alpha(df: pd.DataFrame, items: list[str]) -> dict:
 
 def alpha_sentence(r: dict) -> str:
     a = r["alpha"]
-    if not np.isfinite(a):
-        return "신뢰도를 계산할 수 없어 수준을 판정하지 않았습니다. 총점의 분산과 역문항 코딩을 확인하세요."
     level = ("매우 좋은" if a >= .9 else "좋은" if a >= .8 else "수용 가능한" if a >= .7
              else "다소 낮은" if a >= .6 else "낮은")
     s = f"{r['k']}개 문항의 내적 일관성 신뢰도는 Cronbach's α = {apa_num(a, 2, False)}로 {level} 수준이었다(N = {r['n']})."
@@ -927,7 +897,7 @@ def impute_mean(df: pd.DataFrame, columns: list[str]) -> tuple[pd.DataFrame, dic
     out = df.copy()
     filled = {}
     for c in columns:
-        s = pd.to_numeric(out[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+        s = pd.to_numeric(out[c], errors="coerce")
         k = int(s.isna().sum())
         if k and s.notna().any():
             out[c] = s.fillna(s.mean())

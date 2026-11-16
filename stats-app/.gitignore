@@ -17,5 +17,3 @@ Thumbs.db
 # 개인정보가 담긴 원자료는 올리지 않기 (예제 데이터 data/*.xlsx 는 올림)
 private/
 *_원자료.*
-
-.venv*/
