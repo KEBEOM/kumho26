@@ -1,9 +1,0 @@
-[server]
-maxUploadSize = 50
-headless = true
-
-[browser]
-gatherUsageStats = false
-
-[theme]
-primaryColor = "#2E6BE6"
